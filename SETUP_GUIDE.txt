@@ -1,0 +1,153 @@
+# ═══════════════════════════════════════════════════════════════
+#  HONEYPOT SIMULATION — COMPLETE SETUP GUIDE
+# ═══════════════════════════════════════════════════════════════
+#
+#  TOPOLOGY
+#  ─────────────────────────────────────────────────────────────
+#  [Attacker Laptop]  ←─ Ethernet ─→  [Internet / Router]
+#         │
+#   Mobile Hotspot (192.168.137.1)
+#         │
+#         └─── WiFi ───→  [Defender Laptop]  (gets 192.168.137.X)
+#
+# ═══════════════════════════════════════════════════════════════
+
+## ── STEP 1: INSTALL PREREQUISITES (BOTH MACHINES) ────────────
+
+# 1a. Install Python 3.11+
+#     https://www.python.org/downloads/
+#     During install: ✓ "Add Python to PATH"
+
+# 1b. Install Ollama
+#     https://ollama.com/download
+#     After install, pull the model (do this on BOTH machines):
+
+    ollama pull llama3
+
+#     Wait for download to finish (~4GB). Test it:
+    ollama run llama3 "say hello"
+
+# 1c. Install Python dependencies (BOTH machines)
+#     Open PowerShell in the project folder and run:
+
+    pip install -r requirements.txt
+
+
+## ── STEP 2: ATTACKER MACHINE SETUP (THIS LAPTOP) ─────────────
+
+# 2a. Turn on Mobile Hotspot
+#     Settings → Network & Internet → Mobile Hotspot → ON
+#     Note: Your hotspot IP is usually 192.168.137.1
+
+# 2b. Find the defender laptop's IP
+#     First make sure the defender laptop connects to this hotspot.
+#     Then run:
+
+    cd C:\Users\SridharNaveenPA\honeypot_sim\attacker
+    python find_defender_ip.py
+
+#     Output will show something like:
+#       [✓] FOUND honeypot at: 192.168.137.5
+#     Copy that IP.
+
+# 2c. Configure attacker.py
+#     Open attacker\attacker.py and set:
+#       TARGET_HOST = "192.168.137.X"   ← IP from step 2b
+#       OLLAMA_MODEL = "llama3"          ← or whichever model you pulled
+
+
+## ── STEP 3: DEFENDER MACHINE SETUP (OTHER LAPTOP) ─────────────
+
+# 3a. Connect to attacker's hotspot WiFi
+
+# 3b. Copy the defender folder to the other laptop.
+#     Easiest: share via USB drive, or use:
+    #   - Windows file sharing
+    #   - python -m http.server 8080  (on attacker)
+    #   - then open http://192.168.137.1:8080 on defender to download
+
+# 3c. Open PowerShell AS ADMINISTRATOR on defender and run:
+    cd path\to\defender
+    powershell -ExecutionPolicy Bypass -File open_firewall.ps1
+
+# 3d. Install dependencies on defender:
+    pip install -r requirements.txt
+
+# 3e. Pull Ollama model on defender:
+    ollama pull llama3
+
+# 3f. Start the honeypot server on defender:
+    cd path\to\defender
+    python honeypot_server.py
+
+#     You should see:
+#       [*] Honeypot listening on port 2222
+#       [✓] Ollama reachable
+
+
+## ── STEP 4: RUN THE SIMULATION ────────────────────────────────
+
+# On the ATTACKER machine, run:
+    cd C:\Users\SridharNaveenPA\honeypot_sim\attacker
+    python attacker.py
+
+# OR pass the scenario directly:
+    python attacker.py "Break into a Linux web server and steal the database credentials"
+
+# Other example scenarios:
+    python attacker.py "Perform full reconnaissance and find all open services"
+    python attacker.py "Escalate privileges from a regular user to root"
+    python attacker.py "Find SSH keys and sensitive config files for lateral movement"
+    python attacker.py "Exfiltrate all files from /var/www and /home directories"
+
+
+## ── STEP 5: WATCH THE SIMULATION ─────────────────────────────
+
+# On ATTACKER machine (view attacker log):
+    python view_logs.py attacker_log.jsonl
+
+# On DEFENDER machine (view honeypot log):
+    python view_logs.py honeypot_log.jsonl
+
+# The defender terminal will also show live:
+#   - Every command the attacker sent
+#   - What fake output the defender LLM generated
+#   - Auth attempts (username/password logged)
+
+
+## ── TROUBLESHOOTING ──────────────────────────────────────────
+
+# Problem: SSH connection refused
+#   → Make sure honeypot_server.py is running on defender
+#   → Make sure firewall rule was added (open_firewall.ps1)
+#   → Ping defender from attacker: ping 192.168.137.X
+
+# Problem: Ollama not reachable
+#   → Run: ollama serve   (in a separate terminal)
+#   → Ollama listens on 127.0.0.1:11434 by default
+
+# Problem: "model not found"
+#   → Run: ollama pull llama3
+#   → Or change OLLAMA_MODEL in the config to a model you have
+#   → List available models: ollama list
+
+# Problem: find_defender_ip.py shows nothing
+#   → Defender must be connected to YOUR hotspot
+#   → Defender must have honeypot_server.py already running
+#   → Check hotspot subnet: ipconfig | findstr 192.168.137
+
+
+## ── FILE LAYOUT ─────────────────────────────────────────────
+
+# honeypot_sim/
+# ├── requirements.txt          ← install on both machines
+# ├── view_logs.py              ← log viewer for both machines
+# ├── attacker/
+# │   ├── attacker.py           ← RUN THIS on attacker machine
+# │   ├── find_defender_ip.py   ← helper to find defender's IP
+# │   └── attacker_log.jsonl    ← created at runtime
+# └── defender/
+#     ├── honeypot_server.py    ← RUN THIS on defender machine
+#     ├── open_firewall.ps1     ← run once as admin on defender
+#     ├── honeypot_host.key     ← created at runtime (SSH host key)
+#     └── honeypot_log.jsonl    ← created at runtime
