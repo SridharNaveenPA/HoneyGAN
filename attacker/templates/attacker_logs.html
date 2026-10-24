@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>📋 Attacker Log Viewer</title>
+  <style>
+    :root {
+      --bg:#0d0d0d; --panel:#111318; --border:#1e2433;
+      --red:#ff4c4c; --orange:#ff8c42; --green:#39d98a;
+      --cyan:#38bdf8; --yellow:#fbbf24; --muted:#4b5563; --text:#e2e8f0;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:'Cascadia Code','Fira Code',Consolas,monospace; font-size:13px; }
+    header {
+      background:#0a0e1a; border-bottom:1px solid var(--border);
+      padding:10px 20px; display:flex; align-items:center; gap:16px;
+    }
+    .logo { font-size:18px; font-weight:700; color:var(--red); }
+    .logo span { color:var(--text); }
+    nav { margin-left:auto; display:flex; gap:10px; }
+    nav a {
+      color:var(--muted); text-decoration:none; font-size:12px;
+      padding:4px 12px; border-radius:4px; border:1px solid var(--border); transition:all .15s;
+    }
+    nav a:hover { color:var(--text); border-color:var(--cyan); }
+    nav a.active { color:var(--cyan); border-color:var(--cyan); }
+
+    .toolbar {
+      padding:10px 20px; background:#0c1020; border-bottom:1px solid var(--border);
+      display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+    }
+    .toolbar input, .toolbar select {
+      background:#111318; border:1px solid var(--border); color:var(--text);
+      padding:5px 10px; border-radius:4px; font-size:12px; font-family:inherit;
+      outline:none; transition:border-color .15s;
+    }
+    .toolbar input:focus, .toolbar select:focus { border-color:var(--cyan); }
+    .toolbar input { width:260px; }
+    .btn {
+      background:none; border:1px solid var(--border); color:var(--muted);
+      padding:5px 14px; border-radius:4px; cursor:pointer; font-size:12px;
+      font-family:inherit; transition:all .15s;
+    }
+    .btn:hover { color:var(--text); border-color:var(--cyan); }
+    .btn-primary { border-color:var(--cyan); color:var(--cyan); }
+    .count { font-size:11px; color:var(--muted); margin-left:auto; }
+
+    main { padding:16px 20px; }
+
+    table { width:100%; border-collapse:collapse; }
+    thead th {
+      background:#0c1020; color:var(--muted); font-size:11px; text-transform:uppercase;
+      letter-spacing:1px; padding:8px 12px; border-bottom:1px solid var(--border);
+      text-align:left; position:sticky; top:0; z-index:1;
+    }
+    tbody tr { border-bottom:1px solid rgba(30,36,51,.6); transition:background .1s; }
+    tbody tr:hover { background:rgba(56,189,248,.04); }
+    td { padding:8px 12px; vertical-align:top; }
+
+    .col-time  { color:var(--muted); font-size:11px; white-space:nowrap; width:130px; }
+    .col-turn  { color:var(--yellow); font-weight:700; width:60px; text-align:center; }
+    .col-event { width:140px; }
+    .col-data  { word-break:break-word; }
+
+    .tag { padding:2px 8px; border-radius:3px; font-size:11px; font-weight:600; text-transform:uppercase; }
+    .tag-cmd      { background:rgba(255,140,66,.12); color:var(--orange); border:1px solid rgba(255,140,66,.25); }
+    .tag-out      { background:rgba(75,85,99,.15);   color:var(--muted);  border:1px solid var(--border); }
+    .tag-session  { background:rgba(56,189,248,.1);  color:var(--cyan);   border:1px solid rgba(56,189,248,.25); }
+    .tag-complete { background:rgba(57,217,138,.1);  color:var(--green);  border:1px solid rgba(57,217,138,.25); }
+
+    .pre { background:#080c18; border-radius:4px; padding:6px 10px; white-space:pre-wrap; max-height:200px; overflow-y:auto; font-size:11px; color:#94a3b8; }
+
+    ::-webkit-scrollbar { width:5px; } ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+    .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">⚔️ ATTACKER<span> LOG VIEWER</span></div>
+  <nav>
+    <a href="/">Terminal</a>
+    <a href="/logview" class="active">Log Viewer</a>
+  </nav>
+</header>
+
+<div class="toolbar">
+  <input type="text" id="search" placeholder="🔍 Search commands, output…" oninput="render()"/>
+  <select id="filter" onchange="render()">
+    <option value="">All Events</option>
+    <option value="command_sent">Commands</option>
+    <option value="output_received">Outputs</option>
+    <option value="session_start">Sessions</option>
+    <option value="mission_complete">Completions</option>
+  </select>
+  <button class="btn btn-primary" onclick="load()">↻ Refresh</button>
+  <span class="count" id="count">0 entries</span>
+</div>
+
+<main>
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Turn</th>
+        <th>Event</th>
+        <th>Data</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div id="empty" class="empty" style="display:none">No log entries found.</div>
+</main>
+
+<script>
+  let allEntries = [];
+
+  function tagClass(ev) {
+    const m = { command_sent:'tag-cmd', output_received:'tag-out', session_start:'tag-session', mission_complete:'tag-complete' };
+    return m[ev] || 'tag-out';
+  }
+
+  function tagLabel(ev) {
+    const m = { command_sent:'Command', output_received:'Output', session_start:'Session', mission_complete:'Done' };
+    return m[ev] || ev;
+  }
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function render() {
+    const q  = document.getElementById('search').value.toLowerCase();
+    const ft = document.getElementById('filter').value;
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+
+    const filtered = allEntries.filter(e => {
+      if (ft && e.event !== ft) return false;
+      if (q) {
+        const hay = JSON.stringify(e).toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    document.getElementById('count').textContent = filtered.length + ' entries';
+    document.getElementById('empty').style.display = filtered.length ? 'none' : 'block';
+
+    filtered.forEach(e => {
+      const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '—';
+      let dataHtml = '';
+
+      if (e.event === 'command_sent') {
+        dataHtml = `<div class="pre">$ ${esc(e.command)}</div>`;
+      } else if (e.event === 'output_received') {
+        dataHtml = `<div class="pre">${esc(e.output)}</div>`;
+      } else if (e.event === 'session_start') {
+        dataHtml = `<strong style="color:var(--cyan)">${esc(e.scenario)}</strong><br>
+                    <span style="color:var(--muted);font-size:11px">Target: ${esc(e.target)}</span>`;
+      } else if (e.event === 'mission_complete') {
+        dataHtml = `<span style="color:var(--green)">✅ Completed in ${e.turns} turns</span>`;
+      } else {
+        dataHtml = `<span style="color:var(--muted)">${esc(JSON.stringify(e))}</span>`;
+      }
+
+      tbody.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td class="col-time">${ts}</td>
+          <td class="col-turn">${e.turn || '—'}</td>
+          <td class="col-event"><span class="tag ${tagClass(e.event)}">${tagLabel(e.event)}</span></td>
+          <td class="col-data">${dataHtml}</td>
+        </tr>
+      `);
+    });
+  }
+
+  async function load() {
+    const r = await fetch('/logs');
+    allEntries = await r.json();
+    render();
+  }
+
+  load();
+  setInterval(load, 5000);
+</script>
+</body>
+</html>

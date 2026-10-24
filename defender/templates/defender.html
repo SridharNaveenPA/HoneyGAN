@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🛡️ Defender Honeypot — LLM Cyber Simulation</title>
+  <style>
+    :root {
+      --bg:     #0a0f0a;
+      --panel:  #0d1310;
+      --border: #1a2e1f;
+      --red:    #ff4c4c;
+      --orange: #ff8c42;
+      --green:  #39d98a;
+      --lime:   #a3e635;
+      --cyan:   #38bdf8;
+      --yellow: #fbbf24;
+      --muted:  #4b6355;
+      --text:   #d1fae5;
+      --accent: #34d399;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      background:var(--bg); color:var(--text);
+      font-family:'Cascadia Code','Fira Code',Consolas,monospace;
+      font-size:13px; height:100vh; display:flex; flex-direction:column;
+    }
+
+    header {
+      background:#060e08; border-bottom:1px solid var(--border);
+      padding:10px 20px; display:flex; align-items:center; gap:16px; flex-shrink:0;
+    }
+    .logo { font-size:18px; font-weight:700; color:var(--accent); letter-spacing:1px; }
+    .logo span { color:var(--text); }
+    .badge { padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1px; }
+    .badge-green  { background:rgba(52,211,153,.12); color:var(--accent); border:1px solid rgba(52,211,153,.3); }
+    .badge-red    { background:rgba(255,76,76,.12);  color:var(--red);    border:1px solid rgba(255,76,76,.3); }
+    .badge-muted  { background:rgba(75,99,85,.2);    color:var(--muted);  border:1px solid var(--border); }
+    header nav { margin-left:auto; display:flex; gap:10px; }
+    header nav a {
+      color:var(--muted); text-decoration:none; font-size:12px;
+      padding:4px 12px; border-radius:4px; border:1px solid var(--border); transition:all .15s;
+    }
+    header nav a:hover { color:var(--text); border-color:var(--accent); }
+    header nav a.active { color:var(--accent); border-color:var(--accent); }
+
+    .statusbar {
+      display:flex; gap:24px; align-items:center;
+      padding:7px 20px; background:#08100a; border-bottom:1px solid var(--border); font-size:11px; flex-shrink:0;
+    }
+    .stat { display:flex; align-items:center; gap:6px; }
+    .stat .label { color:var(--muted); }
+    .stat .value { color:var(--yellow); font-weight:600; }
+    #conn-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); transition:background .3s; }
+    #conn-dot.live { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+
+    main {
+      flex:1; display:grid; grid-template-columns:1fr; overflow:hidden;
+      padding:16px; gap:16px;
+    }
+
+    .terminal-card {
+      background:var(--panel); border:1px solid var(--border);
+      border-radius:8px; display:flex; flex-direction:column; overflow:hidden;
+    }
+    .card-header {
+      display:flex; align-items:center; gap:10px; padding:8px 14px;
+      background:#060e08; border-bottom:1px solid var(--border); flex-shrink:0;
+    }
+    .card-header .dots span { display:inline-block; width:11px; height:11px; border-radius:50%; margin-right:5px; }
+    .dot-red { background:#ff5f57; } .dot-yellow { background:#febc2e; } .dot-green { background:#28c840; }
+    .card-title { font-size:12px; color:var(--muted); margin-left:4px; flex:1; }
+    .card-actions { display:flex; gap:8px; }
+    .btn-sm {
+      background:none; border:1px solid var(--border); color:var(--muted);
+      padding:2px 10px; border-radius:4px; cursor:pointer; font-size:11px; font-family:inherit; transition:all .15s;
+    }
+    .btn-sm:hover { color:var(--text); border-color:var(--accent); }
+
+    #terminal { flex:1; overflow-y:auto; padding:14px 16px; line-height:1.65; scroll-behavior:smooth; }
+
+    .evt { margin-bottom:16px; animation:fadeIn .25s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+
+    .evt-header { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+    .evt-icon   { font-size:14px; }
+    .evt-title  { font-weight:700; font-size:12px; }
+    .evt-time   { font-size:10px; color:var(--muted); margin-left:auto; }
+
+    /* Attacker command received by honeypot */
+    .incoming-block {
+      background:#07120a; border-left:3px solid var(--red);
+      border-radius:0 6px 6px 0; padding:8px 12px;
+    }
+    .incoming-prompt { color:#f87171; }
+    .incoming-cmd    { color:#fca5a5; font-weight:600; }
+
+    /* Fake output the defender LLM generated */
+    .fake-block {
+      background:#060f08; border-left:3px solid var(--accent);
+      border-radius:0 6px 6px 0; padding:8px 12px;
+      color:#6ee7b7; white-space:pre-wrap; word-break:break-word;
+      max-height:300px; overflow-y:auto;
+    }
+
+    /* Auth attempt */
+    .auth-block {
+      padding:6px 12px; border-radius:6px;
+      background:rgba(255,76,76,.07); border:1px solid rgba(255,76,76,.2);
+      color:var(--red); display:flex; align-items:center; gap:10px; font-size:12px;
+    }
+
+    /* Connection events */
+    .conn-block {
+      padding:6px 12px; border-radius:6px; font-size:12px;
+      background:rgba(52,211,153,.07); border:1px solid rgba(52,211,153,.2);
+      color:var(--accent); display:flex; align-items:center; gap:8px;
+    }
+    .disc-block {
+      padding:6px 12px; border-radius:6px; font-size:12px;
+      background:rgba(75,99,85,.15); border:1px solid var(--border);
+      color:var(--muted); display:flex; align-items:center; gap:8px;
+    }
+
+    .thinking-block {
+      display:flex; align-items:center; gap:8px; color:var(--lime); margin-top:6px;
+    }
+    .spinner {
+      width:12px; height:12px; border:2px solid var(--muted);
+      border-top-color:var(--lime); border-radius:50%;
+      animation:spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    .trap-tag {
+      font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+      color:var(--accent); background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.2);
+      padding:2px 7px; border-radius:3px;
+    }
+
+    ::-webkit-scrollbar { width:5px; } ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🛡️ DEFENDER<span> HONEYPOT</span></div>
+  <span class="badge badge-green">BLUE TEAM</span>
+  <span class="badge badge-muted" id="model-badge">Model: —</span>
+  <span class="badge badge-red" id="alert-badge" style="display:none">⚠️ ATTACKER ACTIVE</span>
+  <div style="display:flex;align-items:center;gap:6px;margin-left:8px">
+    <div id="conn-dot"></div>
+    <span style="font-size:11px;color:var(--muted)" id="conn-label">Connecting…</span>
+  </div>
+  <nav>
+    <a href="/" class="active">Terminal</a>
+    <a href="/logview">Log Viewer</a>
+  </nav>
+</header>
+
+<div class="statusbar">
+  <div class="stat"><span class="label">Commands Trapped</span><span class="value" id="stat-cmds">0</span></div>
+  <div class="stat"><span class="label">Active Sessions</span><span class="value" id="stat-sessions">0</span></div>
+  <div class="stat"><span class="label">Auth Attempts</span><span class="value" id="stat-auths">0</span></div>
+  <div class="stat"><span class="label">Attacker IP</span><span class="value" id="stat-peer" style="color:var(--red)">—</span></div>
+  <div class="stat"><span class="label">Honeypot Status</span><span class="value" id="stat-status" style="color:var(--accent)">Listening</span></div>
+</div>
+
+<main>
+  <div class="terminal-card">
+    <div class="card-header">
+      <div class="dots">
+        <span class="dot-red"></span><span class="dot-yellow"></span><span class="dot-green"></span>
+      </div>
+      <span class="card-title">webserver-prod — Honeypot Intercept Log</span>
+      <div class="card-actions">
+        <button class="btn-sm" onclick="document.getElementById('terminal').innerHTML=''">Clear</button>
+        <button class="btn-sm" onclick="autoScroll=!autoScroll;this.textContent=autoScroll?'Auto↓':'Manual'">Auto↓</button>
+      </div>
+    </div>
+    <div id="terminal"></div>
+  </div>
+</main>
+
+<script>
+  let cmdCount    = 0;
+  let authCount   = 0;
+  let sessions    = 0;
+  let autoScroll  = true;
+  const term      = document.getElementById('terminal');
+  const dot       = document.getElementById('conn-dot');
+
+  function ts(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString();
+  }
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function scrollBottom() {
+    if (autoScroll) term.scrollTop = term.scrollHeight;
+  }
+
+  function appendEvent(ev) {
+    const type = ev.event;
+    if (type === 'ping') return;
+    let html = '';
+
+    if (type === 'connection') {
+      sessions++;
+      document.getElementById('stat-sessions').textContent = sessions;
+      document.getElementById('stat-peer').textContent     = ev.peer || '—';
+      document.getElementById('stat-status').textContent   = 'Under Attack 🔴';
+      document.getElementById('stat-status').style.color   = 'var(--red)';
+      document.getElementById('alert-badge').style.display = 'inline-flex';
+      html = `<div class="evt">
+        <div class="conn-block">
+          🔗 <strong>New Connection</strong> from <strong>${esc(ev.peer)}</strong>
+          <span class="evt-time">${ts(ev.timestamp)}</span>
+        </div>
+      </div>`;
+    }
+
+    else if (type === 'auth_attempt') {
+      authCount++;
+      document.getElementById('stat-auths').textContent = authCount;
+      html = `<div class="evt">
+        <div class="auth-block">
+          🔑 <strong>Auth Attempt</strong> &nbsp; user: <strong>${esc(ev.username)}</strong>
+          &nbsp; pass: <strong>${esc(ev.password)}</strong>
+          <span class="evt-time">${ts(ev.timestamp)}</span>
+        </div>
+      </div>`;
+    }
+
+    else if (type === 'command_received') {
+      cmdCount++;
+      document.getElementById('stat-cmds').textContent = cmdCount;
+      const thinkId = 'think-def-' + cmdCount;
+      html = `<div class="evt" id="def-evt-${cmdCount}">
+        <div class="evt-header">
+          <span class="evt-icon">💀</span>
+          <span class="evt-title" style="color:var(--red)">INCOMING ATTACK COMMAND</span>
+          <span class="trap-tag">TRAPPED</span>
+          <span class="evt-time">${ts(ev.timestamp)}</span>
+        </div>
+        <div class="incoming-block">
+          <span class="incoming-prompt">admin@webserver-prod:~$ </span>
+          <span class="incoming-cmd">${esc(ev.command)}</span>
+        </div>
+        <div id="${thinkId}" style="margin-top:6px">
+          <div class="thinking-block">
+            <div class="spinner"></div> Generating deceptive response…
+          </div>
+        </div>
+      </div>`;
+    }
+
+    else if (type === 'fake_output_sent') {
+      // Remove spinner and attach the fake output to the matching command block
+      const thinkEl = document.getElementById('think-def-' + cmdCount);
+      if (thinkEl) thinkEl.remove();
+
+      // find most recent command block to attach to
+      const allEvts = document.querySelectorAll('[id^="def-evt-"]');
+      const lastEvt = allEvts[allEvts.length - 1];
+      if (lastEvt) {
+        const out = document.createElement('div');
+        out.style.marginTop = '6px';
+        out.innerHTML = `
+          <div class="evt-header" style="margin-bottom:4px">
+            <span class="evt-icon">🎭</span>
+            <span class="evt-title" style="color:var(--accent)">FAKE OUTPUT SENT TO ATTACKER</span>
+            <span class="evt-time">${ts(ev.timestamp)}</span>
+          </div>
+          <div class="fake-block">${esc(ev.output)}</div>`;
+        lastEvt.appendChild(out);
+        if (autoScroll) lastEvt.scrollIntoView({ behavior:'smooth', block:'end' });
+        return;
+      }
+      // fallback
+      html = `<div class="evt">
+        <div class="fake-block">${esc(ev.output)}</div>
+      </div>`;
+    }
+
+    else if (type === 'disconnection') {
+      sessions = Math.max(0, sessions - 1);
+      document.getElementById('stat-sessions').textContent = sessions;
+      if (sessions === 0) {
+        document.getElementById('stat-status').textContent = 'Listening';
+        document.getElementById('stat-status').style.color = 'var(--accent)';
+        document.getElementById('alert-badge').style.display = 'none';
+      }
+      html = `<div class="evt">
+        <div class="disc-block">
+          🔌 <strong>Disconnected</strong> — ${esc(ev.peer)} &nbsp; Commands intercepted: <strong>${ev.total_commands}</strong>
+          <span class="evt-time">${ts(ev.timestamp)}</span>
+        </div>
+      </div>`;
+    }
+
+    if (html) {
+      term.insertAdjacentHTML('beforeend', html);
+      scrollBottom();
+    }
+  }
+
+  function connect() {
+    const es = new EventSource('/stream');
+    es.onopen = () => {
+      dot.classList.add('live');
+      document.getElementById('conn-label').textContent = 'Live';
+    };
+    es.onmessage = (e) => {
+      try { appendEvent(JSON.parse(e.data)); } catch(_) {}
+    };
+    es.onerror = () => {
+      dot.classList.remove('live');
+      document.getElementById('conn-label').textContent = 'Reconnecting…';
+      es.close();
+      setTimeout(connect, 3000);
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>

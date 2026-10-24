@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>📋 Defender Log Viewer</title>
+  <style>
+    :root {
+      --bg:#0a0f0a; --panel:#0d1310; --border:#1a2e1f;
+      --red:#ff4c4c; --orange:#ff8c42; --green:#39d98a;
+      --cyan:#38bdf8; --yellow:#fbbf24; --muted:#4b6355;
+      --text:#d1fae5; --accent:#34d399;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:'Cascadia Code','Fira Code',Consolas,monospace; font-size:13px; }
+    header {
+      background:#060e08; border-bottom:1px solid var(--border);
+      padding:10px 20px; display:flex; align-items:center; gap:16px;
+    }
+    .logo { font-size:18px; font-weight:700; color:var(--accent); }
+    .logo span { color:var(--text); }
+    nav { margin-left:auto; display:flex; gap:10px; }
+    nav a {
+      color:var(--muted); text-decoration:none; font-size:12px;
+      padding:4px 12px; border-radius:4px; border:1px solid var(--border); transition:all .15s;
+    }
+    nav a:hover { color:var(--text); border-color:var(--accent); }
+    nav a.active { color:var(--accent); border-color:var(--accent); }
+
+    .toolbar {
+      padding:10px 20px; background:#08100a; border-bottom:1px solid var(--border);
+      display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+    }
+    .toolbar input, .toolbar select {
+      background:#0d1310; border:1px solid var(--border); color:var(--text);
+      padding:5px 10px; border-radius:4px; font-size:12px; font-family:inherit; outline:none; transition:border-color .15s;
+    }
+    .toolbar input:focus, .toolbar select:focus { border-color:var(--accent); }
+    .toolbar input { width:260px; }
+    .btn {
+      background:none; border:1px solid var(--border); color:var(--muted);
+      padding:5px 14px; border-radius:4px; cursor:pointer; font-size:12px; font-family:inherit; transition:all .15s;
+    }
+    .btn:hover { color:var(--text); border-color:var(--accent); }
+    .btn-primary { border-color:var(--accent); color:var(--accent); }
+    .count { font-size:11px; color:var(--muted); margin-left:auto; }
+
+    main { padding:16px 20px; }
+    table { width:100%; border-collapse:collapse; }
+    thead th {
+      background:#08100a; color:var(--muted); font-size:11px; text-transform:uppercase;
+      letter-spacing:1px; padding:8px 12px; border-bottom:1px solid var(--border);
+      text-align:left; position:sticky; top:0; z-index:1;
+    }
+    tbody tr { border-bottom:1px solid rgba(26,46,31,.6); transition:background .1s; }
+    tbody tr:hover { background:rgba(52,211,153,.04); }
+    td { padding:8px 12px; vertical-align:top; }
+    .col-time  { color:var(--muted); font-size:11px; white-space:nowrap; width:130px; }
+    .col-event { width:160px; }
+    .col-peer  { width:160px; color:var(--red); font-size:11px; }
+    .col-data  { word-break:break-word; }
+
+    .tag { padding:2px 8px; border-radius:3px; font-size:11px; font-weight:600; text-transform:uppercase; }
+    .tag-cmd   { background:rgba(255,76,76,.12);   color:var(--red);    border:1px solid rgba(255,76,76,.25); }
+    .tag-fake  { background:rgba(52,211,153,.1);   color:var(--accent); border:1px solid rgba(52,211,153,.25); }
+    .tag-auth  { background:rgba(251,191,36,.1);   color:var(--yellow); border:1px solid rgba(251,191,36,.25); }
+    .tag-conn  { background:rgba(56,189,248,.1);   color:var(--cyan);   border:1px solid rgba(56,189,248,.25); }
+    .tag-disc  { background:rgba(75,99,85,.2);     color:var(--muted);  border:1px solid var(--border); }
+
+    .pre { background:#060f08; border-radius:4px; padding:6px 10px; white-space:pre-wrap; max-height:200px; overflow-y:auto; font-size:11px; color:#6ee7b7; }
+    .pre-cmd { color:#fca5a5; }
+
+    ::-webkit-scrollbar { width:5px; } ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+    .empty { text-align:center; padding:60px 20px; color:var(--muted); }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">🛡️ DEFENDER<span> LOG VIEWER</span></div>
+  <nav>
+    <a href="/">Terminal</a>
+    <a href="/logview" class="active">Log Viewer</a>
+  </nav>
+</header>
+
+<div class="toolbar">
+  <input type="text" id="search" placeholder="🔍 Search commands, output, IPs…" oninput="render()"/>
+  <select id="filter" onchange="render()">
+    <option value="">All Events</option>
+    <option value="connection">Connections</option>
+    <option value="auth_attempt">Auth Attempts</option>
+    <option value="command_received">Commands Received</option>
+    <option value="fake_output_sent">Fake Outputs</option>
+    <option value="disconnection">Disconnections</option>
+  </select>
+  <button class="btn btn-primary" onclick="load()">↻ Refresh</button>
+  <span class="count" id="count">0 entries</span>
+</div>
+
+<main>
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Event</th>
+        <th>Attacker IP</th>
+        <th>Data</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div id="empty" class="empty" style="display:none">No log entries found.</div>
+</main>
+
+<script>
+  let allEntries = [];
+
+  function tagInfo(ev) {
+    const m = {
+      connection:       { cls:'tag-conn', lbl:'Connect'    },
+      auth_attempt:     { cls:'tag-auth', lbl:'Auth'       },
+      command_received: { cls:'tag-cmd',  lbl:'Command'    },
+      fake_output_sent: { cls:'tag-fake', lbl:'Fake Output'},
+      disconnection:    { cls:'tag-disc', lbl:'Disconnect' },
+    };
+    return m[ev] || { cls:'tag-disc', lbl: ev };
+  }
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function render() {
+    const q  = document.getElementById('search').value.toLowerCase();
+    const ft = document.getElementById('filter').value;
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+
+    const filtered = allEntries.filter(e => {
+      if (ft && e.event !== ft) return false;
+      if (q && !JSON.stringify(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+
+    document.getElementById('count').textContent = filtered.length + ' entries';
+    document.getElementById('empty').style.display = filtered.length ? 'none' : 'block';
+
+    filtered.forEach(e => {
+      const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '—';
+      const info = tagInfo(e.event);
+      let dataHtml = '';
+
+      if (e.event === 'command_received') {
+        dataHtml = `<div class="pre pre-cmd">$ ${esc(e.command)}</div>`;
+      } else if (e.event === 'fake_output_sent') {
+        dataHtml = `
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">CMD: <span style="color:#fca5a5">${esc(e.command)}</span></div>
+          <div class="pre">${esc(e.output)}</div>`;
+      } else if (e.event === 'auth_attempt') {
+        dataHtml = `user: <strong style="color:var(--yellow)">${esc(e.username)}</strong> &nbsp; pass: <strong style="color:var(--yellow)">${esc(e.password)}</strong>`;
+      } else if (e.event === 'connection') {
+        dataHtml = `<span style="color:var(--cyan)">Connected from ${esc(e.peer)}</span>`;
+      } else if (e.event === 'disconnection') {
+        dataHtml = `<span style="color:var(--muted)">Session ended · ${e.total_commands} commands intercepted</span>`;
+      } else {
+        dataHtml = `<span style="color:var(--muted)">${esc(JSON.stringify(e))}</span>`;
+      }
+
+      tbody.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td class="col-time">${ts}</td>
+          <td class="col-event"><span class="tag ${info.cls}">${info.lbl}</span></td>
+          <td class="col-peer">${esc(e.peer || '—')}</td>
+          <td class="col-data">${dataHtml}</td>
+        </tr>
+      `);
+    });
+  }
+
+  async function load() {
+    const r = await fetch('/logs');
+    allEntries = await r.json();
+    render();
+  }
+
+  load();
+  setInterval(load, 5000);
+</script>
+</body>
+</html>

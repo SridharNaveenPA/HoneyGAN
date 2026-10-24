@@ -1,9 +1,6 @@
 """
 DEFENDER MACHINE — Fake SSH honeypot server + Defender LLM
-Runs on the defender laptop. Listens for SSH connections, intercepts every command,
-feeds it to the defender LLM, and returns realistic-looking fake output.
-The defender LLM believes it is a real system under attack and generates convincing
-decoy responses to trap and study the attacker.
+GUI events are pushed to event_store so defender_gui.py can stream them live.
 """
 
 import select
@@ -17,20 +14,22 @@ import sys
 import os
 from datetime import datetime
 
+# ── event_store lives one level up (honeypot_sim/) ───────────────────────────
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import event_store
+
 # ─────────────────────────────────────────────
-# CONFIG — edit before running
+# CONFIG
 # ─────────────────────────────────────────────
-HONEYPOT_HOST = "0.0.0.0"    # listen on all interfaces
-HONEYPOT_PORT = 2222          # must match attacker config
-SSH_USERNAME  = "admin"       # must match attacker config
-SSH_PASSWORD  = "password123" # must match attacker config
-OLLAMA_MODEL  = "llama3"      # model name in Ollama on THIS machine
+HONEYPOT_HOST = "0.0.0.0"
+HONEYPOT_PORT = 2222
+SSH_USERNAME  = "admin"
+SSH_PASSWORD  = "password123"
+OLLAMA_MODEL  = "llama3"
 LOG_FILE      = "honeypot_log.jsonl"
 BANNER        = "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6"
-# ─────────────────────────────────────────────
-
-# ── Host key (auto-generated if not found) ──
 HOST_KEY_FILE = "honeypot_host.key"
+# ─────────────────────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,29 +75,27 @@ def get_host_key():
 
 
 def log_event(entry: dict):
-    entry["timestamp"] = datetime.now().isoformat()
+    entry.setdefault("timestamp", datetime.now().isoformat())
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(entry) + "\n")
+    # push to GUI event bus
+    event_store.push(entry)
 
 
 def generate_fake_output(ollama_client, command: str, session_history: list) -> str:
     messages = [{"role": "system", "content": DEFENDER_SYSTEM_PROMPT}]
-
-    # Include prior commands for context so the LLM can be consistent
-    for item in session_history[-10:]:  # last 10 turns for context
-        messages.append({"role": "user",    "content": item["command"]})
-        messages.append({"role": "assistant","content": item["output"]})
-
+    for item in session_history[-10:]:
+        messages.append({"role": "user",      "content": item["command"]})
+        messages.append({"role": "assistant", "content": item["output"]})
     messages.append({
         "role": "user",
         "content": f"The attacker just ran this command:\n\n{command}\n\nReturn the terminal output."
     })
-
     try:
         response = ollama_client.chat(
             model=OLLAMA_MODEL,
             messages=messages,
-            options={"temperature": 0.4}  # lower temp = more consistent/realistic
+            options={"temperature": 0.4}
         )
         return response["message"]["content"].strip()
     except Exception as e:
@@ -137,7 +134,6 @@ class HoneypotServerInterface(paramiko.ServerInterface):
         return True
 
     def check_channel_exec_request(self, channel, command):
-        # single exec commands (non-interactive)
         self.event.set()
         self._exec_command = command.decode("utf-8", errors="replace")
         return True
@@ -158,7 +154,6 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
     transport = paramiko.Transport(client_sock)
     transport.local_version = BANNER
     transport.add_server_key(host_key)
-
     server_iface = HoneypotServerInterface()
 
     try:
@@ -177,7 +172,6 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
 
     PROMPT = b"admin@webserver-prod:~$ "
 
-    # Send fake Ubuntu login banner + first prompt
     welcome = (
         "Welcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-91-generic x86_64)\r\n"
         "\r\n"
@@ -191,7 +185,6 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
     buf = ""
     try:
         while True:
-            # Wait up to 0.3s for data
             r, _, _ = select.select([channel], [], [], 0.3)
             if not r:
                 if not transport.is_active():
@@ -205,7 +198,6 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
             decoded = data.decode("utf-8", errors="replace")
             buf += decoded
 
-            # Process complete lines (invoke_shell sends "command\n" all at once)
             while "\n" in buf or "\r" in buf:
                 for sep in ("\r\n", "\n", "\r"):
                     if sep in buf:
@@ -213,8 +205,6 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
                         break
 
                 command = line.strip()
-
-                # Echo the command so attacker sees it in their terminal
                 channel.send((command + "\r\n").encode())
 
                 if not command:
@@ -228,14 +218,17 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
                 log.info(f"[CMD from {peer}] {command!r}")
                 log_event({"event": "command_received", "peer": peer, "command": command})
 
+                # Push "generating" status for GUI spinner
+                event_store.push({"event": "generating_response", "peer": peer, "command": command})
+
                 print(f"\n{'═'*50}")
-                print(f"  ATTACKER COMMAND : {command}")
+                print(f"  ATTACKER CMD  : {command}")
                 print(f"{'─'*50}")
                 print("  Generating fake output via defender LLM...")
 
                 fake_output = generate_fake_output(ollama_client, command, session_history)
 
-                print(f"  FAKE OUTPUT SENT :\n{fake_output[:400]}{'...' if len(fake_output)>400 else ''}")
+                print(f"  FAKE OUTPUT   : {fake_output[:200].replace(chr(10),' ')}...")
                 print(f"{'═'*50}\n")
 
                 log_event({
@@ -247,7 +240,6 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
 
                 session_history.append({"command": command, "output": fake_output})
 
-                # Send fake output + prompt
                 response = fake_output.replace("\n", "\r\n") + "\r\n"
                 channel.send(response.encode("utf-8", errors="replace"))
                 channel.send(PROMPT)
@@ -274,7 +266,6 @@ def main():
     print(f"  Log file  : {LOG_FILE}")
     print("═" * 60 + "\n")
 
-    # Init Ollama
     ollama_client = ollama.Client(host="http://127.0.0.1:11434")
     try:
         ollama_client.list()
@@ -285,7 +276,6 @@ def main():
 
     host_key = get_host_key()
 
-    # TCP server
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_sock.bind((HONEYPOT_HOST, HONEYPOT_PORT))

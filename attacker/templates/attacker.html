@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>⚔️ Attacker Terminal — LLM Cyber Simulation</title>
+  <style>
+    :root {
+      --bg:       #0d0d0d;
+      --panel:    #111318;
+      --border:   #1e2433;
+      --red:      #ff4c4c;
+      --orange:   #ff8c42;
+      --green:    #39d98a;
+      --cyan:     #38bdf8;
+      --yellow:   #fbbf24;
+      --muted:    #4b5563;
+      --text:     #e2e8f0;
+      --prompt:   #f472b6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ── */
+    header {
+      background: #0a0e1a;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    header .logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--red);
+      letter-spacing: 1px;
+    }
+    header .logo span { color: var(--text); }
+    .badge {
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .badge-red   { background: rgba(255,76,76,.15); color: var(--red);    border: 1px solid rgba(255,76,76,.3); }
+    .badge-green { background: rgba(57,217,138,.1); color: var(--green);  border: 1px solid rgba(57,217,138,.3); }
+    .badge-muted { background: rgba(75,85,99,.2);   color: var(--muted);  border: 1px solid var(--border); }
+    header nav { margin-left: auto; display: flex; gap: 10px; }
+    header nav a {
+      color: var(--muted); text-decoration: none; font-size: 12px;
+      padding: 4px 12px; border-radius: 4px; border: 1px solid var(--border);
+      transition: all .15s;
+    }
+    header nav a:hover { color: var(--text); border-color: var(--cyan); }
+    header nav a.active { color: var(--cyan); border-color: var(--cyan); }
+
+    /* ── Status bar ── */
+    .statusbar {
+      display: flex; gap: 24px; align-items: center;
+      padding: 7px 20px;
+      background: #0c1020;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .statusbar .stat { display: flex; align-items: center; gap: 6px; }
+    .statusbar .stat .label { color: var(--muted); }
+    .statusbar .stat .value { color: var(--yellow); font-weight: 600; }
+    #conn-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); transition: background .3s;
+    }
+    #conn-dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+    /* ── Main layout ── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr;
+      overflow: hidden;
+      padding: 16px;
+      gap: 16px;
+    }
+
+    /* ── Terminal card ── */
+    .terminal-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px;
+      background: #0c1020;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .card-header .dots span {
+      display: inline-block; width: 11px; height: 11px;
+      border-radius: 50%; margin-right: 5px;
+    }
+    .dot-red    { background: #ff5f57; }
+    .dot-yellow { background: #febc2e; }
+    .dot-green  { background: #28c840; }
+    .card-title { font-size: 12px; color: var(--muted); margin-left: 4px; flex: 1; }
+    .card-actions { display: flex; gap: 8px; }
+    .btn-sm {
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); padding: 2px 10px; border-radius: 4px;
+      cursor: pointer; font-size: 11px; font-family: inherit;
+      transition: all .15s;
+    }
+    .btn-sm:hover { color: var(--text); border-color: var(--cyan); }
+
+    #terminal {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      line-height: 1.65;
+      scroll-behavior: smooth;
+    }
+
+    /* ── Terminal event blocks ── */
+    .evt { margin-bottom: 14px; animation: fadeIn .25s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+
+    .evt-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 5px;
+    }
+    .evt-icon   { font-size: 14px; }
+    .evt-title  { font-weight: 700; font-size: 12px; }
+    .evt-time   { font-size: 10px; color: var(--muted); margin-left: auto; }
+    .evt-turn   { font-size: 10px; color: var(--muted); }
+
+    /* command block */
+    .cmd-block {
+      background: #0a0e1a;
+      border-left: 3px solid var(--red);
+      border-radius: 0 6px 6px 0;
+      padding: 8px 12px;
+    }
+    .cmd-prompt { color: var(--prompt); }
+    .cmd-text   { color: var(--orange); font-weight: 600; }
+
+    /* output block */
+    .out-block {
+      background: #080c18;
+      border-left: 3px solid var(--muted);
+      border-radius: 0 6px 6px 0;
+      padding: 8px 12px;
+      color: #94a3b8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    /* status events */
+    .status-block {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .status-session  { background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.2); color: var(--cyan); }
+    .status-complete { background: rgba(57,217,138,.08); border: 1px solid rgba(57,217,138,.2); color: var(--green); }
+    .status-thinking {
+      color: var(--yellow);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--muted);
+      border-top-color: var(--yellow);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚔️ ATTACKER<span> CONSOLE</span></div>
+  <span class="badge badge-red">RED TEAM</span>
+  <span class="badge badge-muted" id="model-badge">Model: —</span>
+  <span class="badge badge-muted" id="target-badge">Target: —</span>
+  <div style="display:flex;align-items:center;gap:6px;margin-left:8px">
+    <div id="conn-dot"></div>
+    <span style="font-size:11px;color:var(--muted)" id="conn-label">Connecting…</span>
+  </div>
+  <nav>
+    <a href="/" class="active">Terminal</a>
+    <a href="/logview">Log Viewer</a>
+  </nav>
+</header>
+
+<div class="statusbar">
+  <div class="stat"><span class="label">Turn</span><span class="value" id="stat-turn">—</span></div>
+  <div class="stat"><span class="label">Commands Sent</span><span class="value" id="stat-cmds">0</span></div>
+  <div class="stat"><span class="label">Target</span><span class="value" id="stat-target">—</span></div>
+  <div class="stat"><span class="label">Status</span><span class="value" id="stat-status">Idle</span></div>
+  <div class="stat" style="margin-left:auto">
+    <span class="label">Scenario</span>
+    <span class="value" id="stat-scenario" style="color:var(--cyan);max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
+  </div>
+</div>
+
+<main>
+  <div class="terminal-card">
+    <div class="card-header">
+      <div class="dots">
+        <span class="dot-red"></span>
+        <span class="dot-yellow"></span>
+        <span class="dot-green"></span>
+      </div>
+      <span class="card-title">attacker@redteam — LLM Attack Session</span>
+      <div class="card-actions">
+        <button class="btn-sm" onclick="document.getElementById('terminal').innerHTML=''">Clear</button>
+        <button class="btn-sm" onclick="autoScroll=!autoScroll;this.textContent=autoScroll?'Auto↓':'Manual'">Auto↓</button>
+      </div>
+    </div>
+    <div id="terminal"></div>
+  </div>
+</main>
+
+<script>
+  let cmdCount   = 0;
+  let autoScroll = true;
+  const term     = document.getElementById('terminal');
+  const dot      = document.getElementById('conn-dot');
+  const connLbl  = document.getElementById('conn-label');
+
+  function ts(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleTimeString();
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;');
+  }
+
+  function scrollBottom() {
+    if (autoScroll) term.scrollTop = term.scrollHeight;
+  }
+
+  function appendEvent(ev) {
+    const type = ev.event;
+    if (type === 'ping') return;
+
+    let html = '';
+
+    if (type === 'session_start') {
+      document.getElementById('stat-scenario').textContent = ev.scenario || '—';
+      document.getElementById('stat-target').textContent   = ev.target   || '—';
+      document.getElementById('stat-status').textContent   = 'Running';
+      document.getElementById('target-badge').textContent  = 'Target: ' + (ev.target || '—');
+      document.getElementById('stat-status').style.color   = 'var(--green)';
+      html = `<div class="evt">
+        <div class="status-block status-session">
+          🚀 <strong>Session Started</strong> &nbsp;·&nbsp; ${esc(ev.scenario)} &nbsp;·&nbsp;
+          Target: <strong>${esc(ev.target)}</strong>
+          <span class="evt-time">${ts(ev.timestamp)}</span>
+        </div>
+      </div>`;
+    }
+
+    else if (type === 'command_sent') {
+      cmdCount++;
+      document.getElementById('stat-cmds').textContent = cmdCount;
+      document.getElementById('stat-turn').textContent = ev.turn || cmdCount;
+      // show "thinking" spinner that will be replaced by output
+      const thinkId = 'think-' + cmdCount;
+      html = `<div class="evt" id="evt-cmd-${ev.turn}">
+        <div class="evt-header">
+          <span class="evt-icon">⚡</span>
+          <span class="evt-title" style="color:var(--orange)">ATTACK COMMAND</span>
+          <span class="evt-turn">Turn ${ev.turn}</span>
+          <span class="evt-time">${ts(ev.timestamp)}</span>
+        </div>
+        <div class="cmd-block">
+          <span class="cmd-prompt">admin@webserver-prod:~$ </span>
+          <span class="cmd-text">${esc(ev.command)}</span>
+        </div>
+        <div id="${thinkId}" style="margin-top:6px">
+          <div class="status-thinking">
+            <div class="spinner"></div> Waiting for target response…
+          </div>
+        </div>
+      </div>`;
+    }
+
+    else if (type === 'output_received') {
+      // Remove spinner from matching command block
+      const thinkId = 'think-' + ev.turn;
+      const el = document.getElementById(thinkId);
+      if (el) el.remove();
+      // Append output as new block after the command
+      const cmdEl = document.getElementById('evt-cmd-' + ev.turn);
+      if (cmdEl) {
+        const out = document.createElement('div');
+        out.style.marginTop = '6px';
+        out.innerHTML = `<div class="out-block">${esc(ev.output || '(no output)')}</div>`;
+        cmdEl.appendChild(out);
+        if (autoScroll) cmdEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        return;
+      }
+      // fallback
+      html = `<div class="evt">
+        <div class="out-block">${esc(ev.output || '(no output)')}</div>
+      </div>`;
+    }
+
+    else if (type === 'mission_complete') {
+      document.getElementById('stat-status').textContent = 'Complete ✓';
+      document.getElementById('stat-status').style.color = 'var(--green)';
+      html = `<div class="evt">
+        <div class="status-block status-complete">
+          ✅ <strong>Mission Complete</strong> — ${ev.turns} turns executed
+          <span class="evt-time">${ts(ev.timestamp)}</span>
+        </div>
+      </div>`;
+    }
+
+    if (html) {
+      term.insertAdjacentHTML('beforeend', html);
+      scrollBottom();
+    }
+  }
+
+  // ── SSE connection ─────────────────────────────────────────
+  function connect() {
+    const es = new EventSource('/stream');
+
+    es.onopen = () => {
+      dot.classList.add('live');
+      connLbl.textContent = 'Live';
+    };
+
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        appendEvent(ev);
+      } catch(_) {}
+    };
+
+    es.onerror = () => {
+      dot.classList.remove('live');
+      connLbl.textContent = 'Reconnecting…';
+      es.close();
+      setTimeout(connect, 3000);
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>
