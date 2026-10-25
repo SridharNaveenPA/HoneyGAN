@@ -67,24 +67,37 @@ def get_llm_command(client: ollama.Client, messages: list) -> str:
 
 
 def read_until_prompt(shell, timeout: float = OUTPUT_WAIT_SECONDS) -> str:
-    buf = ""
-    deadline   = time.time() + timeout
-    last_recv  = time.time()
+    """
+    Read from the interactive shell until we see the shell prompt
+    (ends with '$ ' or '$ ') or the hard timeout fires.
+
+    The old code had a 3-second idle-gap break which caused early returns
+    when the defender LLM is slow — the next command would then inherit
+    stale buffered output.  We now ONLY break on the prompt or hard timeout.
+    """
+    buf      = ""
+    deadline = time.time() + timeout
 
     while time.time() < deadline:
         if shell.recv_ready():
             chunk = shell.recv(4096).decode("utf-8", errors="replace")
-            buf += chunk
-            last_recv = time.time()
-            if buf.rstrip().endswith("$ ") or buf.rstrip().endswith("$"):
+            buf  += chunk
+            # Prompt detection: the honeypot always sends "admin@webserver-prod:~$ "
+            stripped = buf.rstrip()
+            if (stripped.endswith("$ ") or
+                    stripped.endswith("$") or
+                    "admin@webserver-prod" in stripped.split("\n")[-1]):
                 break
         else:
-            if buf and (time.time() - last_recv) > 3.0:
-                break
-            time.sleep(0.1)
+            time.sleep(0.05)
 
+    # Strip the echoed command line and any bare prompt lines
     lines   = buf.split("\n")
-    cleaned = [l for l in lines if not l.strip().endswith("$ ") and not l.strip() == "$"]
+    cleaned = [
+        l for l in lines
+        if not (l.rstrip().endswith("$ ") or l.strip() == "$"
+                or "admin@webserver-prod" in l)
+    ]
     return "\n".join(cleaned).strip()
 
 

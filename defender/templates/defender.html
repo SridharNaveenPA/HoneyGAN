@@ -33,9 +33,9 @@
     .logo { font-size:18px; font-weight:700; color:var(--accent); letter-spacing:1px; }
     .logo span { color:var(--text); }
     .badge { padding:3px 10px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1px; }
-    .badge-green  { background:rgba(52,211,153,.12); color:var(--accent); border:1px solid rgba(52,211,153,.3); }
-    .badge-red    { background:rgba(255,76,76,.12);  color:var(--red);    border:1px solid rgba(255,76,76,.3); }
-    .badge-muted  { background:rgba(75,99,85,.2);    color:var(--muted);  border:1px solid var(--border); }
+    .badge-green { background:rgba(52,211,153,.12); color:var(--accent); border:1px solid rgba(52,211,153,.3); }
+    .badge-red   { background:rgba(255,76,76,.12);  color:var(--red);    border:1px solid rgba(255,76,76,.3); }
+    .badge-muted { background:rgba(75,99,85,.2);    color:var(--muted);  border:1px solid var(--border); }
     header nav { margin-left:auto; display:flex; gap:10px; }
     header nav a {
       color:var(--muted); text-decoration:none; font-size:12px;
@@ -54,14 +54,18 @@
     #conn-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); transition:background .3s; }
     #conn-dot.live { background:var(--accent); box-shadow:0 0 6px var(--accent); }
 
-    main {
-      flex:1; display:grid; grid-template-columns:1fr; overflow:hidden;
-      padding:16px; gap:16px;
+    .btn-sm {
+      background:none; border:1px solid var(--border); color:var(--muted);
+      padding:2px 10px; border-radius:4px; cursor:pointer; font-size:11px;
+      font-family:inherit; transition:all .15s;
     }
+    .btn-sm:hover { color:var(--text); border-color:var(--accent); }
+
+    main { flex:1; overflow:hidden; padding:16px; display:flex; flex-direction:column; gap:16px; }
 
     .terminal-card {
       background:var(--panel); border:1px solid var(--border);
-      border-radius:8px; display:flex; flex-direction:column; overflow:hidden;
+      border-radius:8px; display:flex; flex-direction:column; overflow:hidden; flex:1;
     }
     .card-header {
       display:flex; align-items:center; gap:10px; padding:8px 14px;
@@ -71,60 +75,93 @@
     .dot-red { background:#ff5f57; } .dot-yellow { background:#febc2e; } .dot-green { background:#28c840; }
     .card-title { font-size:12px; color:var(--muted); margin-left:4px; flex:1; }
     .card-actions { display:flex; gap:8px; }
-    .btn-sm {
-      background:none; border:1px solid var(--border); color:var(--muted);
-      padding:2px 10px; border-radius:4px; cursor:pointer; font-size:11px; font-family:inherit; transition:all .15s;
-    }
-    .btn-sm:hover { color:var(--text); border-color:var(--accent); }
 
     #terminal { flex:1; overflow-y:auto; padding:14px 16px; line-height:1.65; scroll-behavior:smooth; }
 
-    .evt { margin-bottom:16px; animation:fadeIn .25s ease; }
-    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+    /* ── Session container ── */
+    .session-block {
+      border:1px solid var(--border); border-radius:8px;
+      margin-bottom:16px; overflow:hidden;
+      animation:fadeIn .25s ease;
+    }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
 
-    .evt-header { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
-    .evt-icon   { font-size:14px; }
-    .evt-title  { font-weight:700; font-size:12px; }
-    .evt-time   { font-size:10px; color:var(--muted); margin-left:auto; }
+    .session-header {
+      display:flex; align-items:center; gap:10px;
+      padding:8px 14px; background:rgba(52,211,153,.06);
+      border-bottom:1px solid var(--border);
+      cursor:pointer; user-select:none;
+    }
+    .session-header:hover { background:rgba(52,211,153,.11); }
+    .session-toggle { font-size:10px; color:var(--accent); transition:transform .2s; }
+    .session-toggle.collapsed { transform:rotate(-90deg); }
+    .session-title { font-size:12px; font-weight:700; color:var(--accent); flex:1; }
+    .session-meta  { font-size:11px; color:var(--muted); }
+    .session-body  { padding:10px 14px; }
+    .session-body.hidden { display:none; }
 
-    /* Attacker command received by honeypot */
+    /* ── Turn blocks ── */
+    .turn-block {
+      border:1px solid rgba(255,76,76,.15); border-radius:6px;
+      margin-bottom:10px; overflow:hidden;
+    }
+    .turn-header {
+      display:flex; align-items:center; gap:8px;
+      padding:6px 12px; background:rgba(255,76,76,.05);
+      border-bottom:1px solid rgba(255,76,76,.1);
+      cursor:pointer; user-select:none;
+    }
+    .turn-header:hover { background:rgba(255,76,76,.1); }
+    .turn-toggle { font-size:10px; color:var(--red); transition:transform .2s; }
+    .turn-toggle.collapsed { transform:rotate(-90deg); }
+    .turn-label { font-size:11px; font-weight:700; color:var(--red); }
+    .trap-tag {
+      font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+      color:var(--accent); background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.2);
+      padding:2px 7px; border-radius:3px;
+    }
+    .turn-cmd-preview { font-size:11px; color:var(--muted); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:380px; }
+    .turn-time { font-size:10px; color:var(--muted); margin-left:auto; }
+    .turn-body { padding:8px 12px; }
+    .turn-body.hidden { display:none; }
+
     .incoming-block {
       background:#07120a; border-left:3px solid var(--red);
-      border-radius:0 6px 6px 0; padding:8px 12px;
+      border-radius:0 6px 6px 0; padding:8px 12px; margin-bottom:6px;
     }
     .incoming-prompt { color:#f87171; }
     .incoming-cmd    { color:#fca5a5; font-weight:600; }
 
-    /* Fake output the defender LLM generated */
     .fake-block {
       background:#060f08; border-left:3px solid var(--accent);
       border-radius:0 6px 6px 0; padding:8px 12px;
       color:#6ee7b7; white-space:pre-wrap; word-break:break-word;
       max-height:300px; overflow-y:auto;
     }
+    .fake-label {
+      display:flex; align-items:center; gap:6px;
+      font-size:11px; font-weight:700; color:var(--accent);
+      margin-bottom:4px;
+    }
 
-    /* Auth attempt */
     .auth-block {
       padding:6px 12px; border-radius:6px;
       background:rgba(255,76,76,.07); border:1px solid rgba(255,76,76,.2);
       color:var(--red); display:flex; align-items:center; gap:10px; font-size:12px;
+      margin-bottom:8px;
     }
-
-    /* Connection events */
     .conn-block {
       padding:6px 12px; border-radius:6px; font-size:12px;
       background:rgba(52,211,153,.07); border:1px solid rgba(52,211,153,.2);
-      color:var(--accent); display:flex; align-items:center; gap:8px;
+      color:var(--accent); display:flex; align-items:center; gap:8px; margin-bottom:8px;
     }
     .disc-block {
       padding:6px 12px; border-radius:6px; font-size:12px;
       background:rgba(75,99,85,.15); border:1px solid var(--border);
-      color:var(--muted); display:flex; align-items:center; gap:8px;
+      color:var(--muted); display:flex; align-items:center; gap:8px; margin-bottom:8px;
     }
 
-    .thinking-block {
-      display:flex; align-items:center; gap:8px; color:var(--lime); margin-top:6px;
-    }
+    .thinking-row { display:flex; align-items:center; gap:8px; color:var(--lime); margin-top:6px; }
     .spinner {
       width:12px; height:12px; border:2px solid var(--muted);
       border-top-color:var(--lime); border-radius:50%;
@@ -132,13 +169,8 @@
     }
     @keyframes spin { to { transform:rotate(360deg); } }
 
-    .trap-tag {
-      font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
-      color:var(--accent); background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.2);
-      padding:2px 7px; border-radius:3px;
-    }
-
-    ::-webkit-scrollbar { width:5px; } ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar { width:5px; }
+    ::-webkit-scrollbar-track { background:transparent; }
     ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
   </style>
 </head>
@@ -165,6 +197,10 @@
   <div class="stat"><span class="label">Auth Attempts</span><span class="value" id="stat-auths">0</span></div>
   <div class="stat"><span class="label">Attacker IP</span><span class="value" id="stat-peer" style="color:var(--red)">—</span></div>
   <div class="stat"><span class="label">Honeypot Status</span><span class="value" id="stat-status" style="color:var(--accent)">Listening</span></div>
+  <div class="stat" style="margin-left:auto">
+    <button class="btn-sm" onclick="collapseAll()">Collapse All</button>
+    <button class="btn-sm" style="margin-left:4px" onclick="expandAll()">Expand All</button>
+  </div>
 </div>
 
 <main>
@@ -175,7 +211,7 @@
       </div>
       <span class="card-title">webserver-prod — Honeypot Intercept Log</span>
       <div class="card-actions">
-        <button class="btn-sm" onclick="document.getElementById('terminal').innerHTML=''">Clear</button>
+        <button class="btn-sm" onclick="document.getElementById('terminal').innerHTML='';peerSessions={}">Clear</button>
         <button class="btn-sm" onclick="autoScroll=!autoScroll;this.textContent=autoScroll?'Auto↓':'Manual'">Auto↓</button>
       </div>
     </div>
@@ -184,126 +220,173 @@
 </main>
 
 <script>
-  let cmdCount    = 0;
-  let authCount   = 0;
-  let sessions    = 0;
-  let autoScroll  = true;
-  const term      = document.getElementById('terminal');
-  const dot       = document.getElementById('conn-dot');
+  let cmdCount   = 0;
+  let authCount  = 0;
+  let activeSess = 0;
+  let autoScroll = true;
+  let peerSessions = {};   // peer -> { body, cmdCount, sessionIdx }
+  let sessionSeq = 0;
 
-  function ts(iso) {
-    if (!iso) return '';
-    return new Date(iso).toLocaleTimeString();
+  const term = document.getElementById('terminal');
+  const dot  = document.getElementById('conn-dot');
+
+  function ts(iso) { return iso ? new Date(iso).toLocaleTimeString() : ''; }
+  function esc(s)  { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function scrollBottom() { if (autoScroll) term.scrollTop = term.scrollHeight; }
+
+  function toggleBlock(bodyId, toggleId) {
+    const body   = document.getElementById(bodyId);
+    const toggle = document.getElementById(toggleId);
+    if (!body) return;
+    const hidden = body.classList.toggle('hidden');
+    if (toggle) toggle.classList.toggle('collapsed', hidden);
   }
-  function esc(s) {
-    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  function collapseAll() {
+    document.querySelectorAll('.session-body,.turn-body').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.session-toggle,.turn-toggle').forEach(el => el.classList.add('collapsed'));
   }
-  function scrollBottom() {
-    if (autoScroll) term.scrollTop = term.scrollHeight;
+  function expandAll() {
+    document.querySelectorAll('.session-body,.turn-body').forEach(el => el.classList.remove('hidden'));
+    document.querySelectorAll('.session-toggle,.turn-toggle').forEach(el => el.classList.remove('collapsed'));
   }
 
-  function appendEvent(ev) {
-    const type = ev.event;
-    if (type === 'ping') return;
-    let html = '';
+  // ── Session block per peer ─────────────────────────────────
+  function getOrCreateSession(peer, timestamp) {
+    if (peerSessions[peer]) return peerSessions[peer];
 
-    if (type === 'connection') {
-      sessions++;
-      document.getElementById('stat-sessions').textContent = sessions;
-      document.getElementById('stat-peer').textContent     = ev.peer || '—';
-      document.getElementById('stat-status').textContent   = 'Under Attack 🔴';
-      document.getElementById('stat-status').style.color   = 'var(--red)';
-      document.getElementById('alert-badge').style.display = 'inline-flex';
-      html = `<div class="evt">
-        <div class="conn-block">
-          🔗 <strong>New Connection</strong> from <strong>${esc(ev.peer)}</strong>
-          <span class="evt-time">${ts(ev.timestamp)}</span>
+    sessionSeq++;
+    const id     = 'sess-' + sessionSeq;
+    const bodyId = id + '-body';
+    const togId  = id + '-tog';
+
+    const html = `
+      <div class="session-block" id="${id}">
+        <div class="session-header" onclick="toggleBlock('${bodyId}','${togId}')">
+          <span class="session-toggle" id="${togId}">▼</span>
+          <span class="session-title">🔗 Attacker Session</span>
+          <span class="session-meta" style="color:var(--red)">${esc(peer)}</span>
+          <span class="session-meta" style="margin-left:8px">${ts(timestamp)}</span>
         </div>
+        <div class="session-body" id="${bodyId}"></div>
       </div>`;
-    }
+    term.insertAdjacentHTML('beforeend', html);
+    scrollBottom();
 
-    else if (type === 'auth_attempt') {
-      authCount++;
-      document.getElementById('stat-auths').textContent = authCount;
-      html = `<div class="evt">
-        <div class="auth-block">
-          🔑 <strong>Auth Attempt</strong> &nbsp; user: <strong>${esc(ev.username)}</strong>
-          &nbsp; pass: <strong>${esc(ev.password)}</strong>
-          <span class="evt-time">${ts(ev.timestamp)}</span>
-        </div>
-      </div>`;
-    }
+    peerSessions[peer] = { body: document.getElementById(bodyId), cmdCount: 0 };
+    return peerSessions[peer];
+  }
 
-    else if (type === 'command_received') {
-      cmdCount++;
-      document.getElementById('stat-cmds').textContent = cmdCount;
-      const thinkId = 'think-def-' + cmdCount;
-      html = `<div class="evt" id="def-evt-${cmdCount}">
-        <div class="evt-header">
-          <span class="evt-icon">💀</span>
-          <span class="evt-title" style="color:var(--red)">INCOMING ATTACK COMMAND</span>
+  // ── Turn block per command ─────────────────────────────────
+  function createTurn(sessionBody, turnId, command, timestamp) {
+    const bodyId = 'turn-body-' + turnId;
+    const togId  = 'turn-tog-'  + turnId;
+    const html = `
+      <div class="turn-block" id="turn-${turnId}">
+        <div class="turn-header" onclick="toggleBlock('${bodyId}','${togId}')">
+          <span class="turn-toggle" id="${togId}">▼</span>
+          <span class="turn-label">CMD #${turnId}</span>
           <span class="trap-tag">TRAPPED</span>
-          <span class="evt-time">${ts(ev.timestamp)}</span>
+          <span class="turn-cmd-preview">$ ${esc(command)}</span>
+          <span class="turn-time">${ts(timestamp)}</span>
         </div>
-        <div class="incoming-block">
-          <span class="incoming-prompt">admin@webserver-prod:~$ </span>
-          <span class="incoming-cmd">${esc(ev.command)}</span>
-        </div>
-        <div id="${thinkId}" style="margin-top:6px">
-          <div class="thinking-block">
+        <div class="turn-body" id="${bodyId}">
+          <div class="incoming-block">
+            <span class="incoming-prompt">admin@webserver-prod:~$ </span>
+            <span class="incoming-cmd">${esc(command)}</span>
+          </div>
+          <div id="turn-think-${turnId}" class="thinking-row">
             <div class="spinner"></div> Generating deceptive response…
           </div>
         </div>
       </div>`;
+    sessionBody.insertAdjacentHTML('beforeend', html);
+    scrollBottom();
+  }
+
+  // ── Main event handler ─────────────────────────────────────
+  function appendEvent(ev) {
+    const type = ev.event;
+    if (type === 'ping') return;
+
+    if (type === 'connection') {
+      activeSess++;
+      document.getElementById('stat-sessions').textContent = activeSess;
+      document.getElementById('stat-peer').textContent     = ev.peer || '—';
+      document.getElementById('stat-status').textContent   = 'Under Attack 🔴';
+      document.getElementById('stat-status').style.color   = 'var(--red)';
+      document.getElementById('alert-badge').style.display = 'inline-flex';
+
+      const sess = getOrCreateSession(ev.peer, ev.timestamp);
+      sess.body.insertAdjacentHTML('beforeend',
+        `<div class="conn-block">🔗 <strong>Connected</strong> from <strong>${esc(ev.peer)}</strong>
+          <span style="font-size:10px;color:var(--muted);margin-left:auto">${ts(ev.timestamp)}</span>
+        </div>`);
+      return;
     }
 
-    else if (type === 'fake_output_sent') {
-      // Remove spinner and attach the fake output to the matching command block
-      const thinkEl = document.getElementById('think-def-' + cmdCount);
+    if (type === 'auth_attempt') {
+      authCount++;
+      document.getElementById('stat-auths').textContent = authCount;
+      const peer = ev.peer || '_unknown_';
+      const sess = peerSessions[peer] || getOrCreateSession(peer, ev.timestamp);
+      sess.body.insertAdjacentHTML('beforeend',
+        `<div class="auth-block">🔑 <strong>Auth</strong> user:<strong>${esc(ev.username)}</strong>
+          pass:<strong>${esc(ev.password)}</strong>
+          <span style="font-size:10px;color:var(--muted);margin-left:auto">${ts(ev.timestamp)}</span>
+        </div>`);
+      scrollBottom();
+      return;
+    }
+
+    if (type === 'command_received') {
+      cmdCount++;
+      document.getElementById('stat-cmds').textContent = cmdCount;
+      const peer = ev.peer || '_unknown_';
+      const sess = peerSessions[peer] || getOrCreateSession(peer, ev.timestamp);
+      sess.cmdCount++;
+      const turnId = peer.replace(/[^a-z0-9]/gi,'_') + '_' + sess.cmdCount;
+      sess._lastTurnId = turnId;   // remember for fake_output pairing
+      createTurn(sess.body, turnId, ev.command, ev.timestamp);
+      return;
+    }
+
+    if (type === 'fake_output_sent') {
+      const peer = ev.peer || '_unknown_';
+      const sess = peerSessions[peer];
+      if (!sess || !sess._lastTurnId) return;
+      const turnId  = sess._lastTurnId;
+      const thinkEl = document.getElementById('turn-think-' + turnId);
       if (thinkEl) thinkEl.remove();
-
-      // find most recent command block to attach to
-      const allEvts = document.querySelectorAll('[id^="def-evt-"]');
-      const lastEvt = allEvts[allEvts.length - 1];
-      if (lastEvt) {
-        const out = document.createElement('div');
-        out.style.marginTop = '6px';
-        out.innerHTML = `
-          <div class="evt-header" style="margin-bottom:4px">
-            <span class="evt-icon">🎭</span>
-            <span class="evt-title" style="color:var(--accent)">FAKE OUTPUT SENT TO ATTACKER</span>
-            <span class="evt-time">${ts(ev.timestamp)}</span>
-          </div>
-          <div class="fake-block">${esc(ev.output)}</div>`;
-        lastEvt.appendChild(out);
-        if (autoScroll) lastEvt.scrollIntoView({ behavior:'smooth', block:'end' });
-        return;
+      const bodyEl = document.getElementById('turn-body-' + turnId);
+      if (bodyEl) {
+        bodyEl.insertAdjacentHTML('beforeend', `
+          <div class="fake-label">🎭 FAKE OUTPUT SENT TO ATTACKER</div>
+          <div class="fake-block">${esc(ev.output)}</div>`);
+        if (autoScroll) bodyEl.scrollIntoView({ behavior:'smooth', block:'end' });
       }
-      // fallback
-      html = `<div class="evt">
-        <div class="fake-block">${esc(ev.output)}</div>
-      </div>`;
+      return;
     }
 
-    else if (type === 'disconnection') {
-      sessions = Math.max(0, sessions - 1);
-      document.getElementById('stat-sessions').textContent = sessions;
-      if (sessions === 0) {
+    if (type === 'disconnection') {
+      activeSess = Math.max(0, activeSess - 1);
+      document.getElementById('stat-sessions').textContent = activeSess;
+      if (activeSess === 0) {
         document.getElementById('stat-status').textContent = 'Listening';
         document.getElementById('stat-status').style.color = 'var(--accent)';
         document.getElementById('alert-badge').style.display = 'none';
       }
-      html = `<div class="evt">
-        <div class="disc-block">
-          🔌 <strong>Disconnected</strong> — ${esc(ev.peer)} &nbsp; Commands intercepted: <strong>${ev.total_commands}</strong>
-          <span class="evt-time">${ts(ev.timestamp)}</span>
-        </div>
-      </div>`;
-    }
-
-    if (html) {
-      term.insertAdjacentHTML('beforeend', html);
-      scrollBottom();
+      const peer = ev.peer || '_unknown_';
+      const sess = peerSessions[peer];
+      if (sess) {
+        sess.body.insertAdjacentHTML('beforeend',
+          `<div class="disc-block">🔌 <strong>Disconnected</strong> — ${esc(ev.peer)} &nbsp;
+            Commands: <strong>${ev.total_commands}</strong>
+            <span style="font-size:10px;color:var(--muted);margin-left:auto">${ts(ev.timestamp)}</span>
+          </div>`);
+        scrollBottom();
+        delete peerSessions[peer];
+      }
+      return;
     }
   }
 

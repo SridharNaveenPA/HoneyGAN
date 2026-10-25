@@ -106,8 +106,9 @@ def generate_fake_output(ollama_client, command: str, session_history: list) -> 
 # ── Paramiko server interface ─────────────────────────────────────────────────
 
 class HoneypotServerInterface(paramiko.ServerInterface):
-    def __init__(self):
+    def __init__(self, peer: str = "unknown"):
         self.event = threading.Event()
+        self.peer  = peer
 
     def check_channel_request(self, kind, chanid):
         if kind == "session":
@@ -116,7 +117,7 @@ class HoneypotServerInterface(paramiko.ServerInterface):
 
     def check_auth_password(self, username, password):
         log.info(f"[AUTH] username={username!r} password={password!r}")
-        log_event({"event": "auth_attempt", "username": username, "password": password})
+        log_event({"event": "auth_attempt", "peer": self.peer, "username": username, "password": password})
         if username == SSH_USERNAME and password == SSH_PASSWORD:
             log.info("[AUTH] ✓ Accepted (honeypot)")
             return paramiko.AUTH_SUCCESSFUL
@@ -154,7 +155,7 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
     transport = paramiko.Transport(client_sock)
     transport.local_version = BANNER
     transport.add_server_key(host_key)
-    server_iface = HoneypotServerInterface()
+    server_iface = HoneypotServerInterface(peer=peer)
 
     try:
         transport.start_server(server=server_iface)
@@ -224,9 +225,32 @@ def handle_connection(client_sock: socket.socket, addr, host_key, ollama_client)
                 print(f"\n{'═'*50}")
                 print(f"  ATTACKER CMD  : {command}")
                 print(f"{'─'*50}")
-                print("  Generating fake output via defender LLM...")
+                print("  Generating fake output via defender LLM (threaded)...")
 
-                fake_output = generate_fake_output(ollama_client, command, session_history)
+                # ── Run LLM in a thread so the SSH channel select loop
+                # ── is not blocked while Ollama generates the response.
+                result_holder = [None]
+                done_event    = threading.Event()
+
+                def _generate(cmd=command, hist=list(session_history)):
+                    # cmd/hist captured by default-arg so they're snapshot-safe
+                    result_holder[0] = generate_fake_output(ollama_client, cmd, hist)
+                    done_event.set()
+
+                gen_thread = threading.Thread(target=_generate, daemon=True)
+                gen_thread.start()
+
+                # While waiting, keep draining the channel so the attacker's
+                # SSH client doesn't fill the TCP receive window and stall.
+                while not done_event.wait(timeout=0.2):
+                    # discard any keepalive / window-adjust data the client sends
+                    if channel.recv_ready():
+                        channel.recv(4096)
+                    if not transport.is_active():
+                        done_event.set()
+                        break
+
+                fake_output = result_holder[0] or f"bash: {command.split()[0]}: command not found"
 
                 print(f"  FAKE OUTPUT   : {fake_output[:200].replace(chr(10),' ')}...")
                 print(f"{'═'*50}\n")

@@ -1,32 +1,49 @@
 """
-event_store.py — thread-safe in-memory event bus.
-Both attacker.py and honeypot_server.py import this and call push().
-The Flask GUI apps subscribe to a queue and stream events via SSE.
+event_store.py — file-backed event bus.
+
+Both attacker.py and honeypot_server.py call push() which appends a JSON line
+to a shared file (events.jsonl in the honeypot_sim directory).
+
+The Flask GUI apps tail that file via SSE — this works across separate OS
+processes because the file is on the shared filesystem.
 """
 
+import json
+import os
+import time
 import queue
 import threading
-import json
 from datetime import datetime
-from collections import deque
 
-# ── In-memory stores ──────────────────────────────────────────────────────────
+# ── Shared event file ─────────────────────────────────────────────────────────
+_BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+EVENT_FILE  = os.path.join(_BASE_DIR, "events.jsonl")
+
+# ── In-process subscriber registry (for the GUI process only) ─────────────────
 _lock       = threading.Lock()
-_listeners  = []          # list of queue.Queue — one per SSE subscriber
-_history    = deque(maxlen=500)   # keep last 500 events for late-joining browsers
+_listeners  = []          # list[queue.Queue]
 
 
 def push(event: dict):
-    """Called by attacker.py / honeypot_server.py to emit an event."""
+    """
+    Called by attacker.py / honeypot_server.py.
+    Appends the event as a JSON line to the shared file.
+    Also fans out to any in-process subscribers (in case GUI and backend
+    share the same process during testing).
+    """
     event.setdefault("timestamp", datetime.now().isoformat())
-    payload = json.dumps(event)
+    line = json.dumps(event) + "\n"
 
+    # atomic-ish append — works on Windows and Linux
+    with open(EVENT_FILE, "a", encoding="utf-8") as f:
+        f.write(line)
+
+    # fan-out to in-process listeners (no-op when running as a separate process)
     with _lock:
-        _history.append(payload)
         dead = []
         for q in _listeners:
             try:
-                q.put_nowait(payload)
+                q.put_nowait(line.strip())
             except queue.Full:
                 dead.append(q)
         for q in dead:
@@ -35,17 +52,19 @@ def push(event: dict):
 
 def subscribe() -> queue.Queue:
     """
-    Create a new subscriber queue, pre-loaded with history,
-    so a browser that connects mid-session sees everything so far.
+    Used by the GUI Flask process.
+    Returns a Queue that receives every new event line written to EVENT_FILE.
+    A background thread tails the file and feeds the queue.
     """
-    q = queue.Queue(maxsize=200)
+    q = queue.Queue(maxsize=500)
+
     with _lock:
-        for payload in _history:
-            try:
-                q.put_nowait(payload)
-            except queue.Full:
-                break
         _listeners.append(q)
+
+    # Start a file-tail thread dedicated to this subscriber
+    t = threading.Thread(target=_tail_file, args=(q,), daemon=True)
+    t.start()
+
     return q
 
 
@@ -55,3 +74,43 @@ def unsubscribe(q: queue.Queue):
             _listeners.remove(q)
         except ValueError:
             pass
+
+
+# ── File tailer ───────────────────────────────────────────────────────────────
+
+def _tail_file(q: queue.Queue):
+    """
+    Reads EVENT_FILE from the beginning (so late-joining browsers get history),
+    then polls for new lines, pushing each JSON line into q.
+    Exits when the queue has been garbage-collected or unsubscribed.
+    """
+    # Wait for file to exist
+    while not os.path.exists(EVENT_FILE):
+        time.sleep(0.5)
+
+    with open(EVENT_FILE, "r", encoding="utf-8") as f:
+        # Replay history first
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    q.put_nowait(line)
+                except queue.Full:
+                    pass
+
+        # Then tail for new content
+        while True:
+            line = f.readline()
+            if line:
+                line = line.strip()
+                if line:
+                    try:
+                        q.put(line, timeout=5)
+                    except queue.Full:
+                        pass
+            else:
+                # Check if queue was unsubscribed (removed from _listeners)
+                with _lock:
+                    if q not in _listeners:
+                        return
+                time.sleep(0.1)
