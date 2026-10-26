@@ -215,7 +215,7 @@
       </div>
       <span class="card-title">attacker@redteam — LLM Attack Session</span>
       <div class="card-actions">
-        <button class="btn-sm" onclick="document.getElementById('terminal').innerHTML='';sessions={}">Clear</button>
+        <button class="btn-sm" onclick="document.getElementById('terminal').innerHTML='';sessions={};turnToSession={};currentSession=null;cmdCount=0;">Clear</button>
         <button class="btn-sm" onclick="autoScroll=!autoScroll;this.textContent=autoScroll?'Auto↓':'Manual'">Auto↓</button>
       </div>
     </div>
@@ -228,6 +228,7 @@
   let autoScroll = true;
   let sessions   = {};          // sessionId -> { el, turnCount }
   let currentSession = null;    // id of active session block
+  let turnToSession  = {};      // turn number -> sessionId (for output_received lookup)
   const term = document.getElementById('terminal');
   const dot  = document.getElementById('conn-dot');
 
@@ -281,10 +282,11 @@
   }
 
   // ── Create a turn block inside a session ───────────────────
-  function createTurn(sessionBody, turn, command, timestamp) {
-    const turnId   = 'turn-' + turn;
-    const bodyId   = 'turn-body-' + turn;
-    const toggleId = 'turn-tog-' + turn;
+  function createTurn(sessionBody, sessionId, turn, command, timestamp) {
+    const uid      = sessionId + '-' + turn;   // session-scoped unique ID
+    const turnId   = 'turn-' + uid;
+    const bodyId   = 'turn-body-' + uid;
+    const toggleId = 'turn-tog-' + uid;
     const html = `
       <div class="turn-block" id="${turnId}">
         <div class="turn-header" onclick="toggleBlock('${bodyId}','${toggleId}')">
@@ -298,20 +300,21 @@
             <span class="cmd-prompt">admin@webserver-prod:~$ </span>
             <span class="cmd-text">${esc(command)}</span>
           </div>
-          <div id="turn-think-${turn}" class="thinking-row">
-            <div class="spinner"></div> Waiting for target response…
+          <div id="turn-think-${uid}" class="thinking-row">
+            <div class="spinner"></div> Waiting for defender response…
           </div>
         </div>
       </div>`;
     sessionBody.insertAdjacentHTML('beforeend', html);
     scrollBottom();
+    return uid;   // caller stores this for later output lookup
   }
 
   // ── Append output to a turn ────────────────────────────────
-  function attachOutput(turn, output, timestamp) {
-    const thinkEl = document.getElementById('turn-think-' + turn);
+  function attachOutput(uid, output, timestamp) {
+    const thinkEl = document.getElementById('turn-think-' + uid);
     if (thinkEl) thinkEl.remove();
-    const bodyEl = document.getElementById('turn-body-' + turn);
+    const bodyEl = document.getElementById('turn-body-' + uid);
     if (bodyEl) {
       bodyEl.insertAdjacentHTML('beforeend',
         `<div class="out-block">${esc(output||'(no output)')}</div>`);
@@ -333,6 +336,7 @@
 
       const id = ev.timestamp || Date.now();
       currentSession = id;
+      turnToSession  = {};   // clear turn→uid map for fresh session
       sessions[id] = { body: createSession(id, ev.scenario||'', ev.target||'', ev.timestamp), turnCount: 0 };
       return;
     }
@@ -352,12 +356,17 @@
       }
       const sess = sessions[currentSession];
       sess.turnCount++;
-      createTurn(sess.body, ev.turn, ev.command, ev.timestamp);
+      const uid = createTurn(sess.body, currentSession, ev.turn, ev.command, ev.timestamp);
+      // map turn number → session-scoped uid so output_received can find the block
+      turnToSession[ev.turn] = uid;
       return;
     }
 
     if (type === 'output_received') {
-      attachOutput(ev.turn, ev.output, ev.timestamp);
+      const uid = turnToSession[ev.turn];
+      if (uid) {
+        attachOutput(uid, ev.output, ev.timestamp);
+      }
       return;
     }
 

@@ -21,7 +21,7 @@ import event_store
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-TARGET_HOST  = "192.168.137.217"
+TARGET_HOST  = "192.168.137.5"
 TARGET_PORT  = 2222
 SSH_USERNAME = "admin"
 SSH_PASSWORD = "password123"
